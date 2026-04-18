@@ -1,0 +1,136 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-base: #080810;
+    --bg-card: #11111e;
+    --bg-card-hover: #16162a;
+    --border: #1e1e38;
+    --border-active: #2e2e52;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2e2e52 transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: #2e2e52;
+    border-radius: 3px;
+  }
+
+  body {
+    background-color: var(--bg-base);
+    color: #e2e8f0;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-[#11111e] border border-[#1e1e38] rounded-xl;
+  }
+
+  .card-hover {
+    @apply transition-all duration-200 hover:border-[#2e2e52] hover:bg-[#16162a];
+  }
+
+  .btn-primary {
+    @apply bg-violet-600 hover:bg-violet-500 text-white font-semibold px-4 py-2 rounded-lg
+           transition-all duration-150 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply bg-[#1e1e38] hover:bg-[#2e2e52] text-slate-200 font-medium px-4 py-2 rounded-lg
+           border border-[#2e2e52] transition-all duration-150 active:scale-95;
+  }
+
+  .btn-danger {
+    @apply bg-red-600 hover:bg-red-500 text-white font-semibold px-4 py-2 rounded-lg
+           transition-all duration-150 active:scale-95;
+  }
+
+  .btn-success {
+    @apply bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-2 rounded-lg
+           transition-all duration-150 active:scale-95;
+  }
+
+  .input {
+    @apply bg-[#0a0a14] border border-[#2e2e52] rounded-lg px-3 py-2 text-slate-200 w-full
+           focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent
+           placeholder:text-slate-600 transition-all duration-150;
+  }
+
+  .label {
+    @apply text-slate-400 text-sm font-medium mb-1 block;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold;
+  }
+
+  .badge-available {
+    @apply badge bg-emerald-500/15 text-emerald-400 border border-emerald-500/25;
+  }
+
+  .badge-occupied {
+    @apply badge bg-violet-500/15 text-violet-400 border border-violet-500/25;
+  }
+
+  .badge-expired {
+    @apply badge bg-red-500/15 text-red-400 border border-red-500/25;
+  }
+
+  .badge-maintenance {
+    @apply badge bg-amber-500/15 text-amber-400 border border-amber-500/25;
+  }
+
+  .progress-bar {
+    @apply h-1.5 rounded-full bg-[#1e1e38] overflow-hidden;
+  }
+
+  .progress-fill {
+    @apply h-full rounded-full transition-all duration-1000;
+  }
+}
+
+/* Modal backdrop */
+.modal-backdrop {
+  animation: backdropIn 0.2s ease-out;
+}
+
+.modal-content {
+  animation: modalIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes backdropIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.92) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Pulse ring for expired stations */
+@keyframes ring-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+  50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+}
+
+.ring-pulse {
+  animation: ring-pulse 1.2s ease-in-out infinite;
+}
