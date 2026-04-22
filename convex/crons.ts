@@ -5,7 +5,7 @@ const crons = cronJobs();
 
 crons.interval(
   "check-expired-sessions",
-  { seconds: 15 },
+  { seconds: 45 },
   internal.sessions.checkExpired
 );
 
