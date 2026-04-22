@@ -45,27 +45,35 @@ export const getHistory = query({
 export const start = mutation({
   args: {
     serviceId: v.id("services"),
-    totalMinutes: v.number(),
-    totalPaid: v.number(),
+    totalMinutes: v.optional(v.number()),
+    totalPaid: v.optional(v.number()),
     clientName: v.optional(v.string()),
     paymentMethod: v.optional(v.union(v.literal("QR"), v.literal("Efectivo"))),
     clientNow: v.optional(v.number()),
+    isUnlimited: v.optional(v.boolean()),
   },
-  handler: async (ctx, { serviceId, totalMinutes, totalPaid, clientName, paymentMethod, clientNow }) => {
+  handler: async (ctx, { serviceId, totalMinutes, totalPaid, clientName, paymentMethod, clientNow, isUnlimited }) => {
     const service = await ctx.db.get(serviceId);
     if (!service) throw new Error("Servicio no encontrado.");
     if (service.status !== "available") throw new Error("El servicio no está disponible.");
     if (service.rate <= 0) throw new Error("El servicio no tiene tarifa configurada.");
 
     const now = clientNow ?? Date.now();
-    const endTime = now + totalMinutes * 60 * 1000;
+    let endTime = undefined;
+    if (!isUnlimited) {
+      if (totalMinutes === undefined || totalPaid === undefined) {
+        throw new Error("Se requiere tiempo y monto para una sesión con límite.");
+      }
+      endTime = now + totalMinutes * 60 * 1000;
+    }
 
     const sessionId = await ctx.db.insert("sessions", {
       serviceId,
       startTime: now,
       endTime,
-      totalMinutes,
-      totalPaid,
+      totalMinutes: totalMinutes ?? 0,
+      totalPaid: totalPaid ?? 0,
+      isUnlimited,
       paymentMethod,
       addedMinutes: 0,
       status: "active",
@@ -87,14 +95,16 @@ export const extend = mutation({
   handler: async (ctx, { sessionId, additionalMinutes, additionalPaid, paymentMethod }) => {
     const session = await ctx.db.get(sessionId);
     if (!session) throw new Error("Sesión no encontrada.");
+    if (session.isUnlimited) throw new Error("No se puede extender una sesión de tiempo ilimitado.");
+    if (session.endTime === undefined) throw new Error("La sesión no tiene hora de finalización.");
 
     const newEndTime = session.endTime + additionalMinutes * 60 * 1000;
 
     await ctx.db.patch(sessionId, {
       endTime: newEndTime,
-      totalPaid: session.totalPaid + additionalPaid,
-      totalMinutes: session.totalMinutes + additionalMinutes,
-      addedMinutes: session.addedMinutes + additionalMinutes,
+      totalPaid: (session.totalPaid ?? 0) + additionalPaid,
+      totalMinutes: (session.totalMinutes ?? 0) + additionalMinutes,
+      addedMinutes: (session.addedMinutes ?? 0) + additionalMinutes,
       status: "active",
       ...(paymentMethod !== undefined ? { paymentMethod } : {}),
     });
@@ -102,12 +112,32 @@ export const extend = mutation({
 });
 
 export const complete = mutation({
-  args: { sessionId: v.id("sessions") },
-  handler: async (ctx, { sessionId }) => {
+  args: { 
+    sessionId: v.id("sessions"),
+    finalMinutes: v.optional(v.number()),
+    finalPaid: v.optional(v.number()),
+    paymentMethod: v.optional(v.union(v.literal("QR"), v.literal("Efectivo"))),
+  },
+  handler: async (ctx, { sessionId, finalMinutes, finalPaid, paymentMethod }) => {
     const session = await ctx.db.get(sessionId);
     if (!session) throw new Error("Sesión no encontrada.");
 
-    await ctx.db.patch(sessionId, { status: "completed" });
+    let finalTotalPaid = finalPaid !== undefined ? finalPaid : (session.totalPaid ?? 0);
+    let finalTotalMinutes = finalMinutes !== undefined ? finalMinutes : (session.totalMinutes ?? 0);
+    let finalPaymentMethod = paymentMethod ?? session.paymentMethod;
+
+    if (session.isUnlimited && (finalPaid === undefined || finalMinutes === undefined || !finalPaymentMethod)) {
+      throw new Error("Faltan datos para completar la sesión de tiempo ilimitado.");
+    }
+
+    await ctx.db.patch(sessionId, { 
+      status: "completed",
+      totalMinutes: finalTotalMinutes,
+      totalPaid: finalTotalPaid,
+      paymentMethod: finalPaymentMethod,
+      ...(session.isUnlimited && !session.endTime ? { endTime: Date.now() } : {})
+    });
+    
     await ctx.db.patch(session.serviceId, { status: "available" });
 
     const service = await ctx.db.get(session.serviceId);
@@ -123,17 +153,17 @@ export const complete = mutation({
       const byType = existing.byType ?? [];
       const typeEntry = byType.find((e) => e.type === serviceType);
       if (typeEntry) {
-        typeEntry.earnings += session.totalPaid;
+        typeEntry.earnings += finalTotalPaid;
         typeEntry.count += 1;
       } else {
-        byType.push({ type: serviceType, earnings: session.totalPaid, count: 1 });
+        byType.push({ type: serviceType, earnings: finalTotalPaid, count: 1 });
       }
       
-      const newTotalQR = (existing.totalQR ?? 0) + (session.paymentMethod === "QR" ? session.totalPaid : 0);
-      const newTotalEfectivo = (existing.totalEfectivo ?? 0) + (session.paymentMethod === "Efectivo" ? session.totalPaid : 0);
+      const newTotalQR = (existing.totalQR ?? 0) + (finalPaymentMethod === "QR" ? finalTotalPaid : 0);
+      const newTotalEfectivo = (existing.totalEfectivo ?? 0) + (finalPaymentMethod === "Efectivo" ? finalTotalPaid : 0);
 
       await ctx.db.patch(existing._id, {
-        totalEarnings: existing.totalEarnings + session.totalPaid,
+        totalEarnings: existing.totalEarnings + finalTotalPaid,
         sessionsCount: existing.sessionsCount + 1,
         totalQR: newTotalQR,
         totalEfectivo: newTotalEfectivo,
@@ -142,11 +172,11 @@ export const complete = mutation({
     } else {
       await ctx.db.insert("daily_reports", {
         date: today,
-        totalEarnings: session.totalPaid,
+        totalEarnings: finalTotalPaid,
         sessionsCount: 1,
-        totalQR: session.paymentMethod === "QR" ? session.totalPaid : 0,
-        totalEfectivo: session.paymentMethod === "Efectivo" ? session.totalPaid : 0,
-        byType: [{ type: serviceType, earnings: session.totalPaid, count: 1 }],
+        totalQR: finalPaymentMethod === "QR" ? finalTotalPaid : 0,
+        totalEfectivo: finalPaymentMethod === "Efectivo" ? finalTotalPaid : 0,
+        byType: [{ type: serviceType, earnings: finalTotalPaid, count: 1 }],
       });
     }
   },
@@ -186,14 +216,14 @@ export const deleteSession = mutation({
       const byType = report.byType ?? [];
       const typeEntry = byType.find((e) => e.type === serviceType);
       if (typeEntry) {
-        typeEntry.earnings = Math.max(0, typeEntry.earnings - session.totalPaid);
+        typeEntry.earnings = Math.max(0, typeEntry.earnings - (session.totalPaid ?? 0));
         typeEntry.count    = Math.max(0, typeEntry.count - 1);
       }
       await ctx.db.patch(report._id, {
-        totalEarnings:  Math.max(0, report.totalEarnings - session.totalPaid),
+        totalEarnings:  Math.max(0, report.totalEarnings - (session.totalPaid ?? 0)),
         sessionsCount:  Math.max(0, report.sessionsCount - 1),
-        totalQR:        Math.max(0, (report.totalQR ?? 0) - (session.paymentMethod === "QR" ? session.totalPaid : 0)),
-        totalEfectivo:  Math.max(0, (report.totalEfectivo ?? 0) - (session.paymentMethod === "Efectivo" ? session.totalPaid : 0)),
+        totalQR:        Math.max(0, (report.totalQR ?? 0) - (session.paymentMethod === "QR" ? (session.totalPaid ?? 0) : 0)),
+        totalEfectivo:  Math.max(0, (report.totalEfectivo ?? 0) - (session.paymentMethod === "Efectivo" ? (session.totalPaid ?? 0) : 0)),
         byType,
       });
     }
@@ -213,7 +243,7 @@ export const checkExpired = internalMutation({
       .collect();
 
     for (const session of active) {
-      if (session.endTime < now) {
+      if (!session.isUnlimited && session.endTime !== undefined && session.endTime < now) {
         await ctx.db.patch(session._id, { status: "expired" });
       }
     }

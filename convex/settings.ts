@@ -67,3 +67,22 @@ export const changePin = mutation({
     }
   },
 });
+
+export const verifyPin = mutation({
+  args: { pin: v.string() },
+  handler: async (ctx, { pin }) => {
+    const existing = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", "admin_pin"))
+      .first();
+    
+    if (!existing) {
+      return true; // No PIN configured, allow access
+    }
+    
+    if (existing.value !== pin) {
+      throw new Error("PIN incorrecto.");
+    }
+    return true;
+  },
+});

@@ -136,6 +136,33 @@ export const updateStock = mutation({
   },
 });
 
+export const updateProduct = mutation({
+  args: {
+    productId: v.id("products"),
+    name: v.string(),
+  },
+  handler: async (ctx, { productId, name }) => {
+    const product = await ctx.db.get(productId);
+    if (!product) throw new Error("Producto no encontrado.");
+    
+    await ctx.db.patch(productId, { name });
+  },
+});
+
+export const deleteProduct = mutation({
+  args: {
+    productId: v.id("products"),
+  },
+  handler: async (ctx, { productId }) => {
+    const product = await ctx.db.get(productId);
+    if (!product) throw new Error("Producto no encontrado.");
+    
+    // We can either delete it or mark it as inactive
+    // Deleting is fine as long as there are no relations that would break.
+    await ctx.db.delete(productId);
+  },
+});
+
 export const checkoutSale = mutation({
   args: {
     items: v.array(

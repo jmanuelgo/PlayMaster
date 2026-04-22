@@ -30,20 +30,23 @@ const QUICK_TIMES = [
 export function SessionModal({ service, onClose }: Props) {
   const [selectedMinutes, setSelectedMinutes] = useState<number | null>(60);
   const [customMinutes, setCustomMinutes] = useState("");
+  const [customCost, setCustomCost] = useState("");
   const [useCustom, setUseCustom] = useState(false);
+  const [isUnlimited, setIsUnlimited] = useState(false);
   const [clientName, setClientName] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"QR" | "Efectivo">("QR");
+  const [paymentMethod, setPaymentMethod] = useState<"QR" | "Efectivo">("Efectivo");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const startSession = useMutation(api.sessions.start);
 
   const minutes = useCustom ? parseInt(customMinutes) || 0 : (selectedMinutes ?? 0);
-  const cost = minutes > 0 ? calcCost(minutes, service.rate, service.unitMinutes, service.halfHourRate) : 0;
+  const autoCost = minutes > 0 ? calcCost(minutes, service.rate, service.unitMinutes, service.halfHourRate) : 0;
+  const cost = useCustom ? (customCost !== "" ? parseFloat(customCost) || 0 : autoCost) : autoCost;
 
   async function handleStart() {
-    if (minutes <= 0) {
-      setError("Selecciona un tiempo válido.");
+    if (!isUnlimited && (minutes <= 0 || cost < 0)) {
+      setError("Valores inválidos para tiempo o monto.");
       return;
     }
     setError("");
@@ -51,11 +54,12 @@ export function SessionModal({ service, onClose }: Props) {
     try {
       await startSession({
         serviceId: service._id,
-        totalMinutes: minutes,
-        totalPaid: cost,
+        totalMinutes: isUnlimited ? undefined : minutes,
+        totalPaid: isUnlimited ? undefined : cost,
         clientName: clientName.trim() || undefined,
-        paymentMethod,
+        paymentMethod: isUnlimited ? undefined : paymentMethod,
         clientNow: Date.now(),
+        isUnlimited: isUnlimited ? true : undefined,
       });
       onClose();
     } catch (e: unknown) {
@@ -67,9 +71,9 @@ export function SessionModal({ service, onClose }: Props) {
 
   return (
     <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <div className="modal-content card w-full max-w-md shadow-2xl shadow-black/60">
+      <div className="modal-content card w-full max-w-md shadow-2xl shadow-black/60 flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-start justify-between p-5 border-b border-[#1e1e38]">
+        <div className="flex items-start justify-between p-5 border-b border-[#1e1e38] shrink-0">
           <div>
             <h2 className="text-lg font-bold text-white">Iniciar sesión</h2>
             <p className="text-sm text-slate-400 mt-0.5">{service.name}</p>
@@ -79,7 +83,7 @@ export function SessionModal({ service, onClose }: Props) {
           </button>
         </div>
 
-        <div className="p-5 space-y-5">
+        <div className="p-5 space-y-5 overflow-y-auto">
           {/* Tarifa info */}
           <div className="flex items-center gap-3 bg-violet-500/10 border border-violet-500/20 rounded-lg p-3">
             <DollarSign size={16} className="text-violet-400 shrink-0" />
@@ -99,9 +103,9 @@ export function SessionModal({ service, onClose }: Props) {
               {QUICK_TIMES.map((qt) => (
                 <button
                   key={qt.minutes}
-                  onClick={() => { setSelectedMinutes(qt.minutes); setUseCustom(false); }}
+                  onClick={() => { setSelectedMinutes(qt.minutes); setUseCustom(false); setIsUnlimited(false); }}
                   className={`py-2 rounded-lg text-sm font-medium border transition-all duration-150 ${
-                    !useCustom && selectedMinutes === qt.minutes
+                    !useCustom && !isUnlimited && selectedMinutes === qt.minutes
                       ? "bg-violet-600 border-violet-500 text-white"
                       : "bg-[#0a0a14] border-[#2e2e52] text-slate-300 hover:border-violet-500/50"
                   }`}
@@ -110,9 +114,19 @@ export function SessionModal({ service, onClose }: Props) {
                 </button>
               ))}
               <button
-                onClick={() => { setUseCustom(true); setSelectedMinutes(null); }}
+                onClick={() => { setUseCustom(false); setSelectedMinutes(null); setIsUnlimited(true); }}
                 className={`py-2 rounded-lg text-sm font-medium border transition-all duration-150 ${
-                  useCustom
+                  isUnlimited
+                    ? "bg-blue-600 border-blue-500 text-white"
+                    : "bg-[#0a0a14] border-[#2e2e52] text-slate-300 hover:border-blue-500/50"
+                }`}
+              >
+                Ilimitado
+              </button>
+              <button
+                onClick={() => { setUseCustom(true); setSelectedMinutes(null); setIsUnlimited(false); }}
+                className={`py-2 rounded-lg text-sm font-medium border transition-all duration-150 ${
+                  useCustom && !isUnlimited
                     ? "bg-violet-600 border-violet-500 text-white"
                     : "bg-[#0a0a14] border-[#2e2e52] text-slate-300 hover:border-violet-500/50"
                 }`}
@@ -122,18 +136,41 @@ export function SessionModal({ service, onClose }: Props) {
             </div>
 
             {useCustom && (
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="1"
-                  max="600"
-                  placeholder="Minutos"
-                  value={customMinutes}
-                  onChange={(e) => setCustomMinutes(e.target.value)}
-                  className="input"
-                  autoFocus
-                />
-                <span className="text-slate-400 text-sm shrink-0">min</span>
+              <div className="flex flex-col gap-3 p-3 bg-[#0a0a14] border border-[#2e2e52] rounded-lg mt-3">
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">Tiempo (minutos)</label>
+                  <div className="flex items-center gap-2">
+                    <Clock size={16} className="text-slate-500 shrink-0" />
+                    <input
+                      type="number"
+                      min="1"
+                      max="1440"
+                      placeholder="Minutos"
+                      value={customMinutes}
+                      onChange={(e) => setCustomMinutes(e.target.value)}
+                      className="bg-transparent border-b border-slate-700 focus:border-violet-500 text-white w-full px-1 py-1 outline-none text-sm"
+                      autoFocus
+                    />
+                    <span className="text-slate-400 text-sm shrink-0">min</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 block mb-1">Monto a cobrar (Bs)</label>
+                  <div className="flex items-center gap-2">
+                    <DollarSign size={16} className="text-emerald-500 shrink-0" />
+                    <input
+                      type="number"
+                      step="0.1"
+                      placeholder={`${autoCost}`}
+                      value={customCost}
+                      onChange={(e) => setCustomCost(e.target.value)}
+                      className="bg-transparent border-b border-slate-700 focus:border-emerald-500 text-emerald-400 font-bold w-full px-1 py-1 outline-none text-sm"
+                    />
+                    <span className="text-slate-400 text-xs shrink-0 whitespace-nowrap">
+                      Sugerido: {formatCurrency(autoCost)}
+                    </span>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -153,36 +190,38 @@ export function SessionModal({ service, onClose }: Props) {
           </div>
 
           {/* Método de Pago */}
-          <div>
-            <label className="label flex items-center gap-1.5">
-              <DollarSign size={13} /> Método de Pago
-            </label>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPaymentMethod("QR")}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-all duration-150 ${
-                  paymentMethod === "QR"
-                    ? "bg-emerald-600 border-emerald-500 text-white"
-                    : "bg-[#0a0a14] border-[#2e2e52] text-slate-300 hover:border-emerald-500/50"
-                }`}
-              >
-                QR
-              </button>
-              <button
-                onClick={() => setPaymentMethod("Efectivo")}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-all duration-150 ${
-                  paymentMethod === "Efectivo"
-                    ? "bg-amber-600 border-amber-500 text-white"
-                    : "bg-[#0a0a14] border-[#2e2e52] text-slate-300 hover:border-amber-500/50"
-                }`}
-              >
-                Efectivo
-              </button>
+          {!isUnlimited && (
+            <div>
+              <label className="label flex items-center gap-1.5">
+                <DollarSign size={13} /> Método de Pago
+              </label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPaymentMethod("QR")}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-all duration-150 ${
+                    paymentMethod === "QR"
+                      ? "bg-emerald-600 border-emerald-500 text-white"
+                      : "bg-[#0a0a14] border-[#2e2e52] text-slate-300 hover:border-emerald-500/50"
+                  }`}
+                >
+                  QR
+                </button>
+                <button
+                  onClick={() => setPaymentMethod("Efectivo")}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-all duration-150 ${
+                    paymentMethod === "Efectivo"
+                      ? "bg-amber-600 border-amber-500 text-white"
+                      : "bg-[#0a0a14] border-[#2e2e52] text-slate-300 hover:border-amber-500/50"
+                  }`}
+                >
+                  Efectivo
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Resumen de cobro */}
-          {minutes > 0 && (
+          {!isUnlimited && minutes > 0 && (
             <div className="bg-[#0a0a14] border border-[#2e2e52] rounded-xl p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Zap size={14} className="text-amber-400" />
@@ -212,20 +251,26 @@ export function SessionModal({ service, onClose }: Props) {
             </div>
           )}
 
+          {isUnlimited && (
+            <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 text-center">
+               <span className="text-sm font-semibold text-blue-300">El cobro se calculará automáticamente al finalizar la sesión.</span>
+            </div>
+          )}
+
           {error && (
             <p className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex gap-3 p-5 border-t border-[#1e1e38]">
+        <div className="flex gap-3 p-5 border-t border-[#1e1e38] shrink-0">
           <button onClick={onClose} className="btn-secondary flex-1">Cancelar</button>
           <button
             onClick={handleStart}
-            disabled={loading || minutes <= 0}
+            disabled={loading || (!isUnlimited && minutes <= 0)}
             className="btn-primary flex-1"
           >
-            {loading ? "Iniciando..." : `Confirmar — ${formatCurrency(cost)}`}
+            {loading ? "Iniciando..." : (isUnlimited ? "Iniciar Ilimitado" : `Confirmar — ${formatCurrency(cost)}`)}
           </button>
         </div>
       </div>

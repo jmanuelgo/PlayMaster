@@ -532,12 +532,17 @@ function StoreTab({ startTs, endTs }: { startTs: number; endTs: number }) {
 
 // ─── Root component ───────────────────────────────────────────────────────────
 
-export function Reports() {
+export function Reports({ onCancel }: { onCancel?: () => void }) {
   const [activeTab, setActiveTab]     = useState<"juegos" | "tienda">("juegos");
   const [selectedRange, setSelectedRange] = useState(7);
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd]     = useState("");
   const [useCustom, setUseCustom]     = useState(false);
+
+  // Security
+  const [authorized, setAuthorized] = useState(false);
+  const hasPin = useQuery(api.settings.hasPin);
+  const verifyPin = useMutation(api.settings.verifyPin);
 
   const startDate = useCustom && customStart
     ? customStart
@@ -546,6 +551,32 @@ export function Reports() {
 
   const startTs = new Date(startDate + "T00:00:00").getTime();
   const endTs   = new Date(endDate   + "T23:59:59").getTime();
+
+  // Handle authorization state
+  if (hasPin === false && !authorized) {
+    setAuthorized(true);
+  }
+
+  if (hasPin === undefined) {
+    return <div className="text-center py-16 text-slate-500">Cargando...</div>;
+  }
+
+  if (!authorized) {
+    return (
+      <PinModal
+        title="Acceso Restringido"
+        description="Ingresa el PIN de seguridad para ver los reportes."
+        confirmLabel="Ingresar"
+        onConfirm={async (pin) => {
+          await verifyPin({ pin });
+          setAuthorized(true);
+        }}
+        onCancel={() => {
+          if (onCancel) onCancel();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">

@@ -62,9 +62,9 @@ export function PinModal({ title, description, confirmLabel = "Confirmar", onCon
 
   return (
     <div className="modal-backdrop fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <div className={cn("modal-content card w-full max-w-xs shadow-2xl shadow-black/70", shake && "animate-[shake_0.4s_ease-in-out]")}>
+      <div className={cn("modal-content card w-full max-w-xs shadow-2xl shadow-black/70 flex flex-col max-h-[90vh]", shake && "animate-[shake_0.4s_ease-in-out]")}>
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-[#1e1e38]">
+        <div className="flex items-center justify-between p-5 border-b border-[#1e1e38] shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-violet-500/20 flex items-center justify-center">
               <Lock size={16} className="text-violet-400" />
@@ -79,7 +79,7 @@ export function PinModal({ title, description, confirmLabel = "Confirmar", onCon
           </button>
         </div>
 
-        <div className="p-5 space-y-5">
+        <div className="p-5 space-y-5 overflow-y-auto">
           {/* PIN dots display */}
           <div className="flex justify-center gap-3">
             {Array.from({ length: MAX }).map((_, i) => (
@@ -146,7 +146,7 @@ export function PinModal({ title, description, confirmLabel = "Confirmar", onCon
         </div>
 
         {/* Footer */}
-        <div className="flex gap-3 px-5 pb-5">
+        <div className="flex gap-3 px-5 pb-5 shrink-0">
           <button onClick={onCancel} disabled={loading} className="btn-secondary flex-1">
             Cancelar
           </button>

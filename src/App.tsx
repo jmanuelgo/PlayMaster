@@ -26,7 +26,7 @@ export default function App() {
       <main className="pb-24 sm:pb-0 min-h-[calc(100vh-52px)]">
         {activeView === "dashboard" && <Dashboard />}
         {activeView === "tienda" && <Store />}
-        {activeView === "reports" && <Reports />}
+        {activeView === "reports" && <Reports onCancel={() => setActiveView("dashboard")} />}
         {activeView === "settings" && <Settings />}
       </main>
 

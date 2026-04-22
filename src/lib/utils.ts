@@ -65,6 +65,32 @@ export function calcCost(minutes: number, rate: number, unitMinutes: number, hal
   return units * rate;
 }
 
+export function calcUnlimitedCost(minutes: number, rate: number, unitMinutes: number, halfHourRate?: number): number {
+  if (unitMinutes !== 60) {
+    const units = Math.ceil(minutes / unitMinutes);
+    return units * rate;
+  }
+
+  if (minutes === 0) return 0;
+  
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  
+  let totalCost = hours * rate;
+
+  if (remainder <= 5) {
+    totalCost += 0;
+  } else if (remainder >= 6 && remainder <= 19) {
+    totalCost += rate * (remainder / 60);
+  } else if (remainder >= 20 && remainder <= 49) {
+    totalCost += halfHourRate ?? (rate * 0.5);
+  } else {
+    totalCost += rate;
+  }
+
+  return totalCost;
+}
+
 export function getProgressColor(pct: number): string {
   if (pct > 50) return "bg-emerald-500";
   if (pct > 20) return "bg-amber-500";
@@ -90,11 +116,14 @@ export function serviceTypeIcon(type: string): string {
 }
 
 export function todayISODate(): string {
-  return new Date().toISOString().split("T")[0];
+  const d = new Date();
+  const tzOffset = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - tzOffset).toISOString().split("T")[0];
 }
 
 export function nDaysAgoISODate(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().split("T")[0];
+  const tzOffset = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - tzOffset).toISOString().split("T")[0];
 }

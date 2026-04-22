@@ -11,8 +11,7 @@ export function Dashboard() {
   const activeSessions = useQuery(api.sessions.getActive);
   const expiredSessions = useQuery(api.sessions.getExpired);
 
-  // Tick every second so we can detect client-side expiry immediately,
-  // without waiting for the cron job (which runs every 15s).
+
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -28,14 +27,16 @@ export function Dashboard() {
     totalPaid: number;
     addedMinutes: number;
     clientName?: string;
+    isUnlimited?: boolean;
+    startTime: number;
   }> = {};
 
   for (const s of activeSessions ?? []) {
-    sessionsByService[s.serviceId] = s;
+    sessionsByService[s.serviceId] = s as any;
   }
   for (const s of expiredSessions ?? []) {
     if (!sessionsByService[s.serviceId]) {
-      sessionsByService[s.serviceId] = s;
+      sessionsByService[s.serviceId] = s as any;
     }
   }
 
@@ -44,22 +45,47 @@ export function Dashboard() {
     servicesMap[svc._id] = { name: svc.name, type: svc.type };
   }
 
-  type RawSession = { _id: Id<"sessions">; serviceId: Id<"services">; totalPaid: number; endTime: number };
+  type RawSession = { _id: Id<"sessions">; serviceId: Id<"services">; totalPaid: number; endTime?: number; isUnlimited?: boolean };
 
-  // Merge DB-expired sessions with client-detected expired active sessions
-  // so the alarm fires the moment time runs out, not 15s later.
   const dbExpiredIds = new Set((expiredSessions ?? []).map((s) => s._id));
-  const clientExpired = (activeSessions ?? []).filter((s) => s.endTime <= now && !dbExpiredIds.has(s._id));
-  const allExpired: RawSession[] = [
+  const clientExpired = (activeSessions ?? []).filter((s) => !s.isUnlimited && s.endTime !== undefined && s.endTime <= now && !dbExpiredIds.has(s._id));
+  const allExpired = [
     ...(expiredSessions ?? []),
     ...clientExpired,
   ];
 
-  const expiredForAlert = allExpired.map((s: RawSession) => ({
+  const expiredForAlert = allExpired.map((s) => ({
     _id: s._id,
     serviceId: s.serviceId,
-    totalPaid: s.totalPaid,
+    totalPaid: s.totalPaid ?? 0,
   }));
+
+  const [dismissedAlerts, setDismissedAlerts] = useState<Record<string, number>>({});
+
+  const unlimitedAlerts = (activeSessions ?? [])
+    .filter((s) => {
+      if (!s.isUnlimited) return false;
+      const elapsedMinutes = Math.floor((now - s.startTime) / 60000);
+      if (elapsedMinutes < 180) return false;
+      
+      const lastDismissed = dismissedAlerts[s._id] || 0;
+      if (lastDismissed === 0) return true;
+      if (elapsedMinutes - lastDismissed >= 30) return true;
+      
+      return false;
+    })
+    .map(s => ({
+      _id: s._id as Id<"sessions">,
+      serviceId: s.serviceId as Id<"services">,
+      elapsedMinutes: Math.floor((now - s.startTime) / 60000)
+    }));
+
+  function handleDismissUnlimited(sessionId: Id<"sessions">, elapsedMinutes: number) {
+    setDismissedAlerts(prev => ({
+      ...prev,
+      [sessionId]: elapsedMinutes
+    }));
+  }
 
   if (isLoading) {
     return (
@@ -111,7 +137,12 @@ export function Dashboard() {
         </div>
       </div>
 
-      <AlertOverlay expiredSessions={expiredForAlert} servicesMap={servicesMap} />
+      <AlertOverlay 
+        expiredSessions={expiredForAlert} 
+        unlimitedAlerts={unlimitedAlerts}
+        onDismissUnlimited={handleDismissUnlimited}
+        servicesMap={servicesMap} 
+      />
     </>
   );
 }

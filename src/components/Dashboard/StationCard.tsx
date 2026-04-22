@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -6,6 +6,7 @@ import { Play, PlusCircle, CheckCircle2, Settings2, User, Clock3 } from "lucide-
 import { useCountdown } from "../../hooks/useCountdown";
 import { SessionModal } from "./SessionModal";
 import { ExtendModal } from "./ExtendModal";
+import { CompleteModal } from "./CompleteModal";
 import {
   cn, formatCurrency, formatCountdown, formatDuration,
   getProgressColor, serviceTypeColor, serviceTypeIcon,
@@ -18,6 +19,8 @@ interface Session {
   totalPaid: number;
   addedMinutes: number;
   clientName?: string;
+  isUnlimited?: boolean;
+  startTime: number;
 }
 
 interface Props {
@@ -56,29 +59,43 @@ function CountdownDisplay({ endTime, totalMinutes }: { endTime: number; totalMin
   );
 }
 
+function UptimeDisplay({ startTime }: { startTime: number }) {
+  const [elapsed, setElapsed] = useState(Date.now() - startTime);
+  useEffect(() => {
+    const id = setInterval(() => setElapsed(Date.now() - startTime), 1000);
+    return () => clearInterval(id);
+  }, [startTime]);
+  
+  return (
+    <div className="space-y-2">
+      <div className="text-3xl font-mono font-bold tabular-nums tracking-tight text-blue-400">
+        {formatCountdown(elapsed)}
+      </div>
+      <div className="progress-bar overflow-hidden relative bg-[#0a0a14]">
+        <div className="absolute inset-0 bg-blue-500/20 animate-pulse" />
+      </div>
+      <p className="text-xs text-slate-500">Tiempo transcurrido</p>
+    </div>
+  );
+}
+
 export function StationCard({ service, session }: Props) {
   const [showStart, setShowStart] = useState(false);
   const [showExtend, setShowExtend] = useState(false);
+  const [showComplete, setShowComplete] = useState(false);
 
-  const completeSession = useMutation(api.sessions.complete);
   const updateService = useMutation(api.services.update);
 
   const isAvailable = service.status === "available";
   const isOccupied = service.status === "occupied";
   const isMaintenance = service.status === "maintenance";
 
-  // Use countdown so isExpired reacts immediately when time runs out,
-  // without waiting for the cron to update the DB.
+
   const remaining = useCountdown(session?.endTime ?? 0);
-  const isExpired = !!session && isOccupied && remaining === 0;
+  const isExpired = !!session && !session.isUnlimited && isOccupied && remaining === 0;
 
   const gradient = serviceTypeColor(service.type);
   const icon = serviceTypeIcon(service.type);
-
-  async function handleClose() {
-    if (!session) return;
-    await completeSession({ sessionId: session._id });
-  }
 
   async function toggleMaintenance() {
     await updateService({
@@ -127,7 +144,11 @@ export function StationCard({ service, session }: Props) {
           <div className="flex-1">
             {isOccupied && session ? (
               <div className="space-y-3">
-                <CountdownDisplay endTime={session.endTime} totalMinutes={session.totalMinutes} />
+                {session.isUnlimited ? (
+                  <UptimeDisplay startTime={session.startTime} />
+                ) : (
+                  <CountdownDisplay endTime={session.endTime} totalMinutes={session.totalMinutes} />
+                )}
                 <div className="space-y-1.5 pt-1 border-t border-[#1e1e38]">
                   {session.clientName && (
                     <div className="flex items-center gap-1.5 text-xs text-slate-400">
@@ -138,16 +159,24 @@ export function StationCard({ service, session }: Props) {
                   <div className="flex items-center gap-1.5 text-xs text-slate-400">
                     <Clock3 size={11} className="shrink-0" />
                     <span>
-                      {formatDuration(session.totalMinutes)}
-                      {session.addedMinutes > 0 && (
-                        <span className="text-violet-400 ml-1">(+{formatDuration(session.addedMinutes)} extra)</span>
+                      {session.isUnlimited ? (
+                        <span className="text-blue-400">Tiempo ilimitado</span>
+                      ) : (
+                        <>
+                          {formatDuration(session.totalMinutes)}
+                          {session.addedMinutes > 0 && (
+                            <span className="text-violet-400 ml-1">(+{formatDuration(session.addedMinutes)} extra)</span>
+                          )}
+                        </>
                       )}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="text-xs text-slate-500">Cobro total</span>
-                    <span className="text-sm font-bold text-emerald-400">{formatCurrency(session.totalPaid)}</span>
-                  </div>
+                  {!session.isUnlimited && (
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="text-xs text-slate-500">Cobro total</span>
+                      <span className="text-sm font-bold text-emerald-400">{formatCurrency(session.totalPaid)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : isMaintenance ? (
@@ -177,14 +206,16 @@ export function StationCard({ service, session }: Props) {
             )}
             {isOccupied && session && (
               <>
+                {!session.isUnlimited && (
+                  <button
+                    onClick={() => setShowExtend(true)}
+                    className="btn-secondary w-full flex items-center justify-center gap-2 py-2 text-sm"
+                  >
+                    <PlusCircle size={14} /> Añadir tiempo
+                  </button>
+                )}
                 <button
-                  onClick={() => setShowExtend(true)}
-                  className="btn-secondary w-full flex items-center justify-center gap-2 py-2 text-sm"
-                >
-                  <PlusCircle size={14} /> Añadir tiempo
-                </button>
-                <button
-                  onClick={handleClose}
+                  onClick={() => setShowComplete(true)}
                   className="btn-success w-full flex items-center justify-center gap-2 py-2 text-sm"
                 >
                   <CheckCircle2 size={14} /> Cerrar y cobrar
@@ -222,6 +253,13 @@ export function StationCard({ service, session }: Props) {
           serviceUnitMinutes={service.unitMinutes}
           serviceHalfHourRate={service.halfHourRate}
           onClose={() => setShowExtend(false)}
+        />
+      )}
+      {showComplete && session && (
+        <CompleteModal
+          service={service}
+          session={session}
+          onClose={() => setShowComplete(false)}
         />
       )}
     </>
