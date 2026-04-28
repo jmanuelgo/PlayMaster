@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 export const list = query({
@@ -35,10 +35,74 @@ export const update = mutation({
     rate: v.optional(v.number()),
     halfHourRate: v.optional(v.number()),
     unitMinutes: v.optional(v.number()),
-    status: v.optional(v.union(v.literal("available"), v.literal("occupied"), v.literal("maintenance"))),
+    status: v.optional(v.union(v.literal("available"), v.literal("occupied"), v.literal("maintenance"), v.literal("reserved"))),
+    reservationName: v.optional(v.string()),
+    reservationTime: v.optional(v.number()),
   },
   handler: async (ctx, { id, ...patch }) => {
+    // If we're updating and setting to undefined, convex patch treats undefined as "do not change". 
+    // To unset, we use null with with nullability in schema, but since it's optional, let's keep as is or set explicitly.
+    // Actually we can just pass patch.
     await ctx.db.patch(id, patch);
+  },
+});
+
+export const reserve = mutation({
+  args: {
+    id: v.id("services"),
+    clientName: v.string(),
+  },
+  handler: async (ctx, { id, clientName }) => {
+    const service = await ctx.db.get(id);
+    if (!service) throw new Error("Servicio no encontrado.");
+    if (service.status !== "occupied") {
+      throw new Error("Solo se puede reservar una consola que esté ocupada.");
+    }
+    await ctx.db.patch(id, { reservationName: clientName });
+  },
+});
+
+export const cancelReservation = mutation({
+  args: { id: v.id("services") },
+  handler: async (ctx, { id }) => {
+    const service = await ctx.db.get(id);
+    if (!service) throw new Error("Servicio no encontrado.");
+    
+    // If it was already reserved (waiting for client), make it available
+    if (service.status === "reserved") {
+      await ctx.db.patch(id, { 
+        status: "available",
+        reservationName: undefined,
+        reservationTime: undefined,
+      });
+    } else {
+      // Just clear the reservation details from the occupied console
+      await ctx.db.patch(id, { 
+        reservationName: undefined,
+        reservationTime: undefined,
+      });
+    }
+  },
+});
+
+export const checkExpiredReservations = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const services = await ctx.db.query("services").collect();
+    for (const service of services) {
+      if (
+        service.status === "reserved" && 
+        service.reservationTime !== undefined && 
+        now - service.reservationTime > 5 * 60 * 1000 // 5 minutes
+      ) {
+        await ctx.db.patch(service._id, {
+          status: "available",
+          reservationName: undefined,
+          reservationTime: undefined,
+        });
+      }
+    }
   },
 });
 

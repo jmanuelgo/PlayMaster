@@ -67,11 +67,11 @@ export function Dashboard() {
       if (!s.isUnlimited) return false;
       const elapsedMinutes = Math.floor((now - s.startTime) / 60000);
       if (elapsedMinutes < 180) return false;
-      
+
       const lastDismissed = dismissedAlerts[s._id] || 0;
       if (lastDismissed === 0) return true;
       if (elapsedMinutes - lastDismissed >= 30) return true;
-      
+
       return false;
     })
     .map(s => ({
@@ -137,11 +137,11 @@ export function Dashboard() {
         </div>
       </div>
 
-      <AlertOverlay 
-        expiredSessions={expiredForAlert} 
+      <AlertOverlay
+        expiredSessions={expiredForAlert}
         unlimitedAlerts={unlimitedAlerts}
         onDismissUnlimited={handleDismissUnlimited}
-        servicesMap={servicesMap} 
+        servicesMap={servicesMap}
       />
     </>
   );

@@ -4,7 +4,8 @@ import { TrendingUp, Activity, Layers, RefreshCw } from "lucide-react";
 import { formatCurrency } from "../lib/utils";
 
 export function ControlBar() {
-  const todayStats = useQuery(api.reports.getTodayStats);
+  const localDate = new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD in local timezone
+  const todayStats = useQuery(api.reports.getTodayStats, { date: localDate });
   const services = useQuery(api.services.list);
   const activeSessions = useQuery(api.sessions.getActive);
   const seedServices = useMutation(api.services.seed);

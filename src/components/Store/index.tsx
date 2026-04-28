@@ -67,6 +67,7 @@ export function Store() {
         })),
         totalPrice: total,
         paymentMethod,
+        localDate: new Date().toLocaleDateString("sv-SE"),
       });
       setCart([]);
       setSuccess("Venta registrada con éxito");

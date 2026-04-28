@@ -8,8 +8,10 @@ export default defineSchema({
     rate: v.number(),
     halfHourRate: v.optional(v.number()),
     unitMinutes: v.number(),
-    status: v.union(v.literal("available"), v.literal("occupied"), v.literal("maintenance")),
+    status: v.union(v.literal("available"), v.literal("occupied"), v.literal("maintenance"), v.literal("reserved")),
     order: v.optional(v.number()),
+    reservationName: v.optional(v.string()),
+    reservationTime: v.optional(v.number()),
   }),
 
   sessions: defineTable({

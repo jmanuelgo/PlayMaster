@@ -71,6 +71,7 @@ export function CompleteModal({ service, session, onClose }: Props) {
         finalMinutes: minutes,
         finalPaid: cost,
         paymentMethod,
+        localDate: new Date().toLocaleDateString("sv-SE"),
       });
       onClose();
     } catch (e: unknown) {

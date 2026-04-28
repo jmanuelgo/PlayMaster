@@ -55,7 +55,9 @@ export const start = mutation({
   handler: async (ctx, { serviceId, totalMinutes, totalPaid, clientName, paymentMethod, clientNow, isUnlimited }) => {
     const service = await ctx.db.get(serviceId);
     if (!service) throw new Error("Servicio no encontrado.");
-    if (service.status !== "available") throw new Error("El servicio no está disponible.");
+    if (service.status !== "available" && service.status !== "reserved") {
+      throw new Error("El servicio no está disponible.");
+    }
     if (service.rate <= 0) throw new Error("El servicio no tiene tarifa configurada.");
 
     const now = clientNow ?? Date.now();
@@ -77,10 +79,16 @@ export const start = mutation({
       paymentMethod,
       addedMinutes: 0,
       status: "active",
-      clientName,
+      clientName: clientName ?? service.reservationName, // default to reserved name if not provided
     });
 
-    await ctx.db.patch(serviceId, { status: "occupied" });
+    // We can use replace to remove reservation fields to be safe
+    const { _id, _creationTime, reservationName, reservationTime, ...serviceData } = service;
+    await ctx.db.replace(serviceId, {
+      ...serviceData,
+      status: "occupied",
+    });
+
     return sessionId;
   },
 });
@@ -112,13 +120,14 @@ export const extend = mutation({
 });
 
 export const complete = mutation({
-  args: { 
+  args: {
     sessionId: v.id("sessions"),
     finalMinutes: v.optional(v.number()),
     finalPaid: v.optional(v.number()),
     paymentMethod: v.optional(v.union(v.literal("QR"), v.literal("Efectivo"))),
+    localDate: v.optional(v.string()),
   },
-  handler: async (ctx, { sessionId, finalMinutes, finalPaid, paymentMethod }) => {
+  handler: async (ctx, { sessionId, finalMinutes, finalPaid, paymentMethod, localDate }) => {
     const session = await ctx.db.get(sessionId);
     if (!session) throw new Error("Sesión no encontrada.");
 
@@ -138,12 +147,22 @@ export const complete = mutation({
       ...(session.isUnlimited && !session.endTime ? { endTime: Date.now() } : {})
     });
     
-    await ctx.db.patch(session.serviceId, { status: "available" });
-
     const service = await ctx.db.get(session.serviceId);
+    if (service) {
+      if (service.reservationName) {
+        // Change status to reserved and start the timer
+        await ctx.db.patch(session.serviceId, { 
+          status: "reserved",
+          reservationTime: Date.now()
+        });
+      } else {
+        await ctx.db.patch(session.serviceId, { status: "available" });
+      }
+    }
+
     const serviceType = service?.type ?? "Otro";
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = localDate ?? new Date().toISOString().split("T")[0];
     const existing = await ctx.db
       .query("daily_reports")
       .withIndex("by_date", (q) => q.eq("date", today))

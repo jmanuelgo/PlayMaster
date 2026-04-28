@@ -175,8 +175,9 @@ export const checkoutSale = mutation({
     ),
     totalPrice: v.number(),
     paymentMethod: v.union(v.literal("QR"), v.literal("Efectivo")),
+    localDate: v.optional(v.string()),
   },
-  handler: async (ctx, { items, totalPrice, paymentMethod }) => {
+  handler: async (ctx, { items, totalPrice, paymentMethod, localDate }) => {
     // 1. Validate stock and update products
     for (const item of items) {
       const product = await ctx.db.get(item.productId);
@@ -197,7 +198,7 @@ export const checkoutSale = mutation({
     });
 
     // 3. Update Daily Reports
-    const today = new Date().toISOString().split("T")[0];
+    const today = localDate ?? new Date().toISOString().split("T")[0];
     const existing = await ctx.db
       .query("daily_reports")
       .withIndex("by_date", (q) => q.eq("date", today))

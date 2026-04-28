@@ -15,9 +15,11 @@ export const getDailyReports = query({
 });
 
 export const getTodayStats = query({
-  args: {},
-  handler: async (ctx) => {
-    const today = new Date().toISOString().split("T")[0];
+  args: {
+    date: v.optional(v.string()),
+  },
+  handler: async (ctx, { date }) => {
+    const today = date ?? new Date().toISOString().split("T")[0];
     const report = await ctx.db
       .query("daily_reports")
       .withIndex("by_date", (q) => q.eq("date", today))

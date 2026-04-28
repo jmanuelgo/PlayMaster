@@ -12,6 +12,7 @@ interface Service {
   rate: number;
   halfHourRate?: number;
   unitMinutes: number;
+  reservationName?: string;
 }
 
 interface Props {
@@ -33,7 +34,7 @@ export function SessionModal({ service, onClose }: Props) {
   const [customCost, setCustomCost] = useState("");
   const [useCustom, setUseCustom] = useState(false);
   const [isUnlimited, setIsUnlimited] = useState(false);
-  const [clientName, setClientName] = useState("");
+  const [clientName, setClientName] = useState(service.reservationName ?? "");
   const [paymentMethod, setPaymentMethod] = useState<"QR" | "Efectivo">("Efectivo");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");

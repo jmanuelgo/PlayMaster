@@ -9,4 +9,10 @@ crons.interval(
   internal.sessions.checkExpired
 );
 
+crons.interval(
+  "check-expired-reservations",
+  { minutes: 1 },
+  internal.services.checkExpiredReservations
+);
+
 export default crons;

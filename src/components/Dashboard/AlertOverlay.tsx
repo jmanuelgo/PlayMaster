@@ -50,7 +50,7 @@ export function AlertOverlay({ expiredSessions, unlimitedAlerts = [], onDismissU
   if (count === 0) return null;
 
   async function handleClose(sessionId: Id<"sessions">) {
-    await completeSession({ sessionId });
+    await completeSession({ sessionId, localDate: new Date().toLocaleDateString("sv-SE") });
   }
 
   return (

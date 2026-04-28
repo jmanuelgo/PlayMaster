@@ -2,11 +2,12 @@ import { useState, useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { Play, PlusCircle, CheckCircle2, Settings2, User, Clock3 } from "lucide-react";
+import { Play, PlusCircle, CheckCircle2, Settings2, User, Clock3, X } from "lucide-react";
 import { useCountdown } from "../../hooks/useCountdown";
 import { SessionModal } from "./SessionModal";
 import { ExtendModal } from "./ExtendModal";
 import { CompleteModal } from "./CompleteModal";
+import { ReserveModal } from "./ReserveModal";
 import {
   cn, formatCurrency, formatCountdown, formatDuration,
   getProgressColor, serviceTypeColor, serviceTypeIcon,
@@ -31,7 +32,9 @@ interface Props {
     rate: number;
     halfHourRate?: number;
     unitMinutes: number;
-    status: "available" | "occupied" | "maintenance";
+    status: "available" | "occupied" | "maintenance" | "reserved";
+    reservationName?: string;
+    reservationTime?: number;
   };
   session?: Session;
 }
@@ -83,12 +86,15 @@ export function StationCard({ service, session }: Props) {
   const [showStart, setShowStart] = useState(false);
   const [showExtend, setShowExtend] = useState(false);
   const [showComplete, setShowComplete] = useState(false);
+  const [showReserve, setShowReserve] = useState(false);
 
   const updateService = useMutation(api.services.update);
+  const cancelReservation = useMutation(api.services.cancelReservation);
 
   const isAvailable = service.status === "available";
   const isOccupied = service.status === "occupied";
   const isMaintenance = service.status === "maintenance";
+  const isReserved = service.status === "reserved";
 
 
   const remaining = useCountdown(session?.endTime ?? 0);
@@ -111,6 +117,7 @@ export function StationCard({ service, session }: Props) {
           "card card-hover relative flex flex-col overflow-hidden transition-all duration-300 select-none",
           isExpired && "border-red-500/60 ring-1 ring-red-500/30 ring-pulse",
           isOccupied && !isExpired && "border-violet-500/40",
+          isReserved && "border-blue-500/40",
           isMaintenance && "opacity-70"
         )}
       >
@@ -132,6 +139,8 @@ export function StationCard({ service, session }: Props) {
                 <span className="badge-expired">Expirado</span>
               ) : isOccupied ? (
                 <span className="badge-occupied">Ocupado</span>
+              ) : isReserved ? (
+                <span className="badge-occupied !bg-blue-500/10 !text-blue-400 !border-blue-500/20">Reservado</span>
               ) : isMaintenance ? (
                 <span className="badge-maintenance">Mantenimiento</span>
               ) : (
@@ -179,6 +188,25 @@ export function StationCard({ service, session }: Props) {
                   )}
                 </div>
               </div>
+            ) : isReserved ? (
+              <div className="flex flex-col items-center justify-center py-6 text-center gap-2">
+                <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center mb-1">
+                  <User size={20} className="text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400">Esperando a</p>
+                  <p className="text-sm font-bold text-blue-400 mt-0.5">{service.reservationName}</p>
+                </div>
+                {service.reservationTime && (
+                  <div className="mt-2 w-full max-w-[150px]">
+                    <div className="text-xs text-slate-500 mb-1">Tiempo de tolerancia</div>
+                    <CountdownDisplay 
+                      endTime={service.reservationTime + 5 * 60 * 1000} 
+                      totalMinutes={5} 
+                    />
+                  </div>
+                )}
+              </div>
             ) : isMaintenance ? (
               <div className="flex flex-col items-center justify-center py-6 text-center gap-2">
                 <Settings2 size={28} className="text-amber-400/60" />
@@ -199,7 +227,7 @@ export function StationCard({ service, session }: Props) {
 
           {/* Actions */}
           <div className="flex flex-col gap-2 pt-1">
-            {isAvailable && (
+            {(isAvailable || isReserved) && (
               <button onClick={() => setShowStart(true)} className="btn-primary w-full flex items-center justify-center gap-2 py-2">
                 <Play size={14} /> Iniciar sesión
               </button>
@@ -221,6 +249,22 @@ export function StationCard({ service, session }: Props) {
                   <CheckCircle2 size={14} /> Cerrar y cobrar
                 </button>
               </>
+            )}
+            {isOccupied && !service.reservationName && (
+              <button
+                onClick={() => setShowReserve(true)}
+                className="btn-secondary w-full flex items-center justify-center gap-2 py-2 text-sm border-blue-500/20 hover:border-blue-500/40 text-blue-400 hover:text-blue-300"
+              >
+                <User size={14} /> Reservar consola
+              </button>
+            )}
+            {service.reservationName && (
+              <button
+                onClick={() => cancelReservation({ id: service._id })}
+                className="btn-secondary w-full flex items-center justify-center gap-2 py-2 text-sm border-red-500/20 hover:border-red-500/40 text-red-400 hover:text-red-300"
+              >
+                <X size={14} /> Cancelar reserva ({service.reservationName})
+              </button>
             )}
             {isAvailable && (
               <button
@@ -244,6 +288,9 @@ export function StationCard({ service, session }: Props) {
 
       {showStart && (
         <SessionModal service={service} onClose={() => setShowStart(false)} />
+      )}
+      {showReserve && (
+        <ReserveModal serviceId={service._id} serviceName={service.name} onClose={() => setShowReserve(false)} />
       )}
       {showExtend && session && (
         <ExtendModal
